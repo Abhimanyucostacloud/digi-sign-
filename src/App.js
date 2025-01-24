@@ -1,8 +1,27 @@
-import React, { useEffect, useRef } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import WebViewer from "@pdftron/webviewer";
+import {
+  Button,
+  TextField,
+  Typography,
+  Accordion,
+  AccordionSummary,
+  AccordionDetails,
+  Box,
+} from "@mui/material";
+import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
+import FileUploadIcon from "@mui/icons-material/UploadFile";
 
 const App = () => {
   const viewerRef = useRef(null);
+  const [digitalIDFile, setDigitalIDFile] = useState(null);
+  const [digitalIDPassword, setDigitalIDPassword] = useState("");
+  const [signatureInfo, setSignatureInfo] = useState({
+    location: "",
+    reason: "",
+    contact: "",
+  });
+
   const pdfPath = "/Sample.pdf"; // Path to the PDF document
   const appearanceImgPath = "/path-to-your-signature-appearance.png"; // Replace with your signature appearance image path
   const certFilePath = "/path-to-your-cert.pfx"; // Replace with your certificate file path
@@ -20,48 +39,35 @@ const App = () => {
       .then((instance) => {
         const { PDFNet, documentViewer } = instance.Core;
 
-        // Enable digital signature features in the UI
         instance.UI.enableFeatures([
           "digitalSignatures",
           "annotations",
           "forms",
         ]);
 
-        // Listen for when the document is loaded
         documentViewer.addEventListener("documentLoaded", async () => {
           await PDFNet.initialize();
 
           const doc = await documentViewer.getDocument().getPDFDoc();
-
-          // Run PDFNet operations with cleanup
           await PDFNet.runWithCleanup(async () => {
-            // Lock the document for changes
             doc.lock();
 
-            // Enable Forms
-            const hasForms = await doc.hasForms();
-            console.log("Does document have forms?", hasForms);
-
-            // Add a standard signature handler
             const sigHandlerId = await doc.addStdSignatureHandlerFromURL(
               certFilePath,
               certPassword
             );
-
-            // Define a sample signature field name for the existing PDF
-            const approvalFieldName = "ApprovalField"; // Update this with your field name in the PDF
+            const approvalFieldName = "ApprovalField";
             const foundApprovalField = await doc.getField(approvalFieldName);
+
             const approvalSigField =
               await PDFNet.DigitalSignatureField.createFromField(
                 foundApprovalField
               );
 
-            // Optionally add extra details to the signature
-            await approvalSigField.setLocation("Vancouver, BC");
-            await approvalSigField.setReason("Document approval.");
-            await approvalSigField.setContactInfo("www.apryse.com");
+            await approvalSigField.setLocation(signatureInfo.location);
+            await approvalSigField.setReason(signatureInfo.reason);
+            await approvalSigField.setContactInfo(signatureInfo.contact);
 
-            // Optionally add a visual signature appearance
             const img = await PDFNet.Image.createFromURL(
               doc,
               appearanceImgPath
@@ -69,19 +75,17 @@ const App = () => {
             const approvalSignatureWidget =
               await PDFNet.SignatureWidget.createWithDigitalSignatureField(
                 doc,
-                await PDFNet.Rect.init(50, 550, 250, 650), // Coordinates for signature placement
+                await PDFNet.Rect.init(50, 550, 250, 650),
                 approvalSigField
               );
             await approvalSignatureWidget.createSignatureAppearance(img);
             const page1 = await doc.getPage(1);
             page1.annotPushBack(approvalSignatureWidget);
 
-            // Prepare for signing the document
             await approvalSigField.signOnNextSaveWithCustomHandler(
               sigHandlerId
             );
 
-            // Save the signed document
             const buf = await doc.saveMemoryBuffer(
               PDFNet.SDFDoc.SaveOptions.e_linearized
             );
@@ -96,23 +100,133 @@ const App = () => {
       .catch((error) => {
         console.error("Error initializing WebViewer:", error);
       });
-  }, [pdfPath]);
+  }, [pdfPath, signatureInfo]);
+
+  const handleFileUpload = (event) => {
+    const file = event.target.files[0];
+    setDigitalIDFile(file);
+  };
+
+  const handleInputChange = (event) => {
+    const { name, value } = event.target;
+    setSignatureInfo((prev) => ({ ...prev, [name]: value }));
+  };
+
+  const handleApplySignature = () => {
+    console.log("Digital ID File:", digitalIDFile);
+    console.log("Password:", digitalIDPassword);
+    console.log("Signature Info:", signatureInfo);
+  };
 
   return (
-    <div style={{ fontFamily: "Arial, sans-serif", padding: "20px" }}>
-      <h1 style={{ textAlign: "center", margin: "auto 80px" }}>
-        Costa Cloud Digital Signature
-      </h1>
-      <div
+    <Box sx={{ display: "flex", height: "100vh", overflow: "hidden" }}>
+      {/* WebViewer on the left */}
+      <Box
         ref={viewerRef}
-        style={{
-          height: "800px",
-          width: "70%",
-          margin: "20px 30%",
-          border: "1px solid #000",
+        sx={{ flex: 3, border: "1px solid #000", height: "100%" }}
+      ></Box>
+
+      {/* Digital Signature UI on the right */}
+      <Box
+        sx={{
+          flex: 1,
+          padding: 4,
+          backgroundColor: "#f7f7f7",
+          borderLeft: "1px solid #ddd",
+          overflowY: "auto",
         }}
-      ></div>
-    </div>
+      >
+        <Typography variant="h5" textAlign="center" gutterBottom>
+          Digital Signatures
+        </Typography>
+        <Typography variant="body2" textAlign="center" gutterBottom>
+          Costa Cloud Digital Signature
+        </Typography>
+        <Button
+          variant="contained"
+          component="label"
+          startIcon={<FileUploadIcon />}
+          fullWidth
+          sx={{ mb: 2 }}
+        >
+          Choose File
+          <input type="file" hidden onChange={handleFileUpload} />
+        </Button>
+        {digitalIDFile && (
+          <Typography variant="body2" gutterBottom>
+            Selected File: {digitalIDFile.name}
+          </Typography>
+        )}
+        <Accordion>
+          <AccordionSummary expandIcon={<ExpandMoreIcon />}>
+            <Typography>Digital ID (optional)</Typography>
+          </AccordionSummary>
+          <AccordionDetails>
+            <Button
+              variant="contained"
+              component="label"
+              fullWidth
+              sx={{ mb: 2 }}
+            >
+              Select Digital ID File
+              <input type="file" hidden onChange={handleFileUpload} />
+            </Button>
+            {digitalIDFile && (
+              <Typography variant="body2" gutterBottom>
+                Selected Digital ID: {digitalIDFile.name}
+              </Typography>
+            )}
+            <TextField
+              label="Digital ID Password"
+              type="password"
+              fullWidth
+              value={digitalIDPassword}
+              onChange={(e) => setDigitalIDPassword(e.target.value)}
+              sx={{ mb: 2 }}
+            />
+          </AccordionDetails>
+        </Accordion>
+        <Accordion sx={{ mt: 2 }}>
+          <AccordionSummary expandIcon={<ExpandMoreIcon />}>
+            <Typography>Set Signature Information (optional)</Typography>
+          </AccordionSummary>
+          <AccordionDetails>
+            <TextField
+              label="Set Location"
+              name="location"
+              fullWidth
+              value={signatureInfo.location}
+              onChange={handleInputChange}
+              sx={{ mb: 2 }}
+            />
+            <TextField
+              label="Set Reason"
+              name="reason"
+              fullWidth
+              value={signatureInfo.reason}
+              onChange={handleInputChange}
+              sx={{ mb: 2 }}
+            />
+            <TextField
+              label="Set Contact Information"
+              name="contact"
+              fullWidth
+              value={signatureInfo.contact}
+              onChange={handleInputChange}
+              sx={{ mb: 2 }}
+            />
+          </AccordionDetails>
+        </Accordion>
+        <Button
+          variant="contained"
+          fullWidth
+          sx={{ mt: 3 }}
+          onClick={handleApplySignature}
+        >
+          Apply Approval Signature
+        </Button>
+      </Box>
+    </Box>
   );
 };
 
