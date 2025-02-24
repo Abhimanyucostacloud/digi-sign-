@@ -1,3 +1,4 @@
+
 import React, { useEffect, useRef, useState } from "react";
 import WebViewer from "@pdftron/webviewer";
 import {
@@ -14,6 +15,7 @@ import FileUploadIcon from "@mui/icons-material/UploadFile";
 
 const App = () => {
   const viewerRef = useRef(null);
+  const [instance, setInstance] = useState(null);
   const [digitalIDFile, setDigitalIDFile] = useState(null);
   const [digitalIDPassword, setDigitalIDPassword] = useState("");
   const [signatureInfo, setSignatureInfo] = useState({
@@ -22,89 +24,29 @@ const App = () => {
     contact: "",
   });
 
-  const pdfPath = "/Sample.pdf"; // Path to the PDF document
-  const appearanceImgPath = "/path-to-your-signature-appearance.png"; // Replace with your signature appearance image path
-  const certFilePath = "/path-to-your-cert.pfx"; // Replace with your certificate file path
-  const certPassword = "your-password"; // Replace with your certificate password
-
   useEffect(() => {
-    const viewerConfig = {
-      licenseKey:
-        "AngelBot AI LLP:OEM:AngelBot AI CRM::B+:AMS(20291022):0664A24CE67FB55A8048B253187CE30C600DE2660BDD878643CF028B9622DAB6F5C7",
-      path: "/webviewer/lib",
-      initialDoc: pdfPath,
-    };
-
-    WebViewer(viewerConfig, viewerRef.current)
-      .then((instance) => {
-        const { PDFNet, documentViewer } = instance.Core;
-
-        instance.UI.enableFeatures([
-          "digitalSignatures",
-          "annotations",
-          "forms",
-        ]);
-
-        documentViewer.addEventListener("documentLoaded", async () => {
-          await PDFNet.initialize();
-
-          const doc = await documentViewer.getDocument().getPDFDoc();
-          await PDFNet.runWithCleanup(async () => {
-            doc.lock();
-
-            const sigHandlerId = await doc.addStdSignatureHandlerFromURL(
-              certFilePath,
-              certPassword
-            );
-            const approvalFieldName = "ApprovalField";
-            const foundApprovalField = await doc.getField(approvalFieldName);
-
-            const approvalSigField =
-              await PDFNet.DigitalSignatureField.createFromField(
-                foundApprovalField
-              );
-
-            await approvalSigField.setLocation(signatureInfo.location);
-            await approvalSigField.setReason(signatureInfo.reason);
-            await approvalSigField.setContactInfo(signatureInfo.contact);
-
-            const img = await PDFNet.Image.createFromURL(
-              doc,
-              appearanceImgPath
-            );
-            const approvalSignatureWidget =
-              await PDFNet.SignatureWidget.createWithDigitalSignatureField(
-                doc,
-                await PDFNet.Rect.init(50, 550, 250, 650),
-                approvalSigField
-              );
-            await approvalSignatureWidget.createSignatureAppearance(img);
-            const page1 = await doc.getPage(1);
-            page1.annotPushBack(approvalSignatureWidget);
-
-            await approvalSigField.signOnNextSaveWithCustomHandler(
-              sigHandlerId
-            );
-
-            const buf = await doc.saveMemoryBuffer(
-              PDFNet.SDFDoc.SaveOptions.e_linearized
-            );
-            const blob = new Blob([buf], { type: "application/pdf" });
-            const link = document.createElement("a");
-            link.href = URL.createObjectURL(blob);
-            link.download = "SignedDocument.pdf";
-            link.click();
-          });
-        });
-      })
-      .catch((error) => {
-        console.error("Error initializing WebViewer:", error);
-      });
-  }, [pdfPath, signatureInfo]);
+    WebViewer(
+      {
+        licenseKey:
+          "AngelBot AI LLP:OEM:AngelBot AI CRM::B+:AMS(20291022):0664A24CE67FB55A8048B253187CE30C600DE2660BDD878643CF028B9622DAB6F5C7",
+        path: "/webviewer/lib",
+        initialDoc: "", // No default document
+      },
+      viewerRef.current
+    ).then((inst) => {
+      setInstance(inst);
+    });
+  }, []);
 
   const handleFileUpload = (event) => {
     const file = event.target.files[0];
-    setDigitalIDFile(file);
+    if (file && instance) {
+      const reader = new FileReader();
+      reader.onload = function (e) {
+        instance.UI.loadDocument(e.target.result, { filename: file.name });
+      };
+      reader.readAsArrayBuffer(file);
+    }
   };
 
   const handleInputChange = (event) => {
@@ -142,6 +84,8 @@ const App = () => {
         <Typography variant="body2" textAlign="center" gutterBottom>
           Costa Cloud Digital Signature
         </Typography>
+        
+        {/* Upload PDF Button */}
         <Button
           variant="contained"
           component="label"
@@ -149,14 +93,10 @@ const App = () => {
           fullWidth
           sx={{ mb: 2 }}
         >
-          Choose File
-          <input type="file" hidden onChange={handleFileUpload} />
+          Upload PDF
+          <input type="file" accept="application/pdf" hidden onChange={handleFileUpload} />
         </Button>
-        {digitalIDFile && (
-          <Typography variant="body2" gutterBottom>
-            Selected File: {digitalIDFile.name}
-          </Typography>
-        )}
+
         <Accordion>
           <AccordionSummary expandIcon={<ExpandMoreIcon />}>
             <Typography>Digital ID (optional)</Typography>
@@ -171,11 +111,6 @@ const App = () => {
               Select Digital ID File
               <input type="file" hidden onChange={handleFileUpload} />
             </Button>
-            {digitalIDFile && (
-              <Typography variant="body2" gutterBottom>
-                Selected Digital ID: {digitalIDFile.name}
-              </Typography>
-            )}
             <TextField
               label="Digital ID Password"
               type="password"
@@ -186,6 +121,7 @@ const App = () => {
             />
           </AccordionDetails>
         </Accordion>
+
         <Accordion sx={{ mt: 2 }}>
           <AccordionSummary expandIcon={<ExpandMoreIcon />}>
             <Typography>Set Signature Information (optional)</Typography>
@@ -217,6 +153,7 @@ const App = () => {
             />
           </AccordionDetails>
         </Accordion>
+
         <Button
           variant="contained"
           fullWidth
@@ -231,3 +168,4 @@ const App = () => {
 };
 
 export default App;
+
