@@ -59,7 +59,8 @@ const App = () => {
     console.log("Password:", digitalIDPassword);
     console.log("Signature Info:", signatureInfo);
   };
-
+   
+  
   return (
     <Box sx={{ display: "flex", height: "100vh", overflow: "hidden" }}>
       {/* WebViewer on the left */}
