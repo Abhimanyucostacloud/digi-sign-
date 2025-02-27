@@ -1,5 +1,5 @@
 
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useRef, useState, useCallback } from "react";
 import WebViewer from "@pdftron/webviewer";
 import {
   Button,
@@ -24,6 +24,16 @@ const App = () => {
     contact: "",
   });
 
+  // Function to load PDF from localStorage
+  const loadPdfFromStorage = useCallback(() => {
+    const savedPdf = localStorage.getItem("uploadedPDF");
+    if (savedPdf && instance) {
+      const pdfBlob = base64ToBlob(savedPdf, "application/pdf");
+      const fileUrl = URL.createObjectURL(pdfBlob);
+      instance.UI.loadDocument(fileUrl, { filename: "saved.pdf" });
+    }
+  }, [instance]);
+
   useEffect(() => {
     WebViewer(
       {
@@ -38,15 +48,45 @@ const App = () => {
     });
   }, []);
 
+  useEffect(() => {
+    if (instance) {
+      loadPdfFromStorage();
+    }
+  }, [instance, loadPdfFromStorage]);
+
+  // Function to handle file upload
   const handleFileUpload = (event) => {
     const file = event.target.files[0];
     if (file && instance) {
       const reader = new FileReader();
       reader.onload = function (e) {
-        instance.UI.loadDocument(e.target.result, { filename: file.name });
+        const pdfData = arrayBufferToBase64(e.target.result);
+        localStorage.setItem("uploadedPDF", pdfData); // Save as Base64
+        const pdfBlob = base64ToBlob(pdfData, "application/pdf");
+        const fileUrl = URL.createObjectURL(pdfBlob);
+        instance.UI.loadDocument(fileUrl, { filename: file.name });
       };
       reader.readAsArrayBuffer(file);
     }
+  };
+
+  // Function to convert ArrayBuffer to Base64
+  const arrayBufferToBase64 = (buffer) => {
+    let binary = "";
+    const bytes = new Uint8Array(buffer);
+    bytes.forEach((b) => (binary += String.fromCharCode(b)));
+    return btoa(binary);
+  };
+
+  // Function to convert Base64 to Blob
+  const base64ToBlob = (base64, mimeType) => {
+    const byteCharacters = atob(base64);
+    const byteNumbers = new Array(byteCharacters.length);
+    for (let i = 0; i < byteCharacters.length; i++) {
+      byteNumbers[i] = byteCharacters.charCodeAt(i);
+    }
+    const byteArray = new Uint8Array(byteNumbers);
+    return new Blob([byteArray], { type: mimeType });
   };
 
   const handleInputChange = (event) => {
