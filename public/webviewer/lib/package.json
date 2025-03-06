@@ -5,5 +5,8 @@
   "main": "webviewer.min.js",
   "author": "Apryse Software Inc.",
   "build": "MTU3NTkzMDE2ODA2OC02LjAuMC1iZXRhLTM=",
-  "types": "./types.d.ts"
+  "types": "./types.d.ts",
+  "dependencies": {
+    "webviewer": "file:"
+  }
 }
