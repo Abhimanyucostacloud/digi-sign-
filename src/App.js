@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useRef, useState, useCallback } from "react";
 import WebViewer from "@pdftron/webviewer";
 import {
   Button,
@@ -14,7 +14,8 @@ import FileUploadIcon from "@mui/icons-material/UploadFile";
 
 const App = () => {
   const viewerRef = useRef(null);
-  const [digitalIDFile, setDigitalIDFile] = useState(null);
+  const [instance, setInstance] = useState(null);
+  // const [digitalIDFile, setDigitalIDFile] = useState(null);
   const [digitalIDPassword, setDigitalIDPassword] = useState("");
   const [signatureInfo, setSignatureInfo] = useState({
     location: "",
@@ -22,89 +23,87 @@ const App = () => {
     contact: "",
   });
 
-  const pdfPath = "/Sample.pdf"; // Path to the PDF document
-  const appearanceImgPath = "/path-to-your-signature-appearance.png"; // Replace with your signature appearance image path
-  const certFilePath = "/path-to-your-cert.pfx"; // Replace with your certificate file path
-  const certPassword = "your-password"; // Replace with your certificate password
+  // Function to load PDF from localStorage
+  const loadPdfFromStorage = useCallback(() => {
+    const savedPdf = localStorage.getItem("uploadedPDF");
+    if (savedPdf && instance) {
+      const pdfBlob = base64ToBlob(savedPdf, "application/pdf");
+      const fileUrl = URL.createObjectURL(pdfBlob);
+      instance.UI.loadDocument(fileUrl, { filename: "saved.pdf" });
+    }
+  }, [instance]);
 
   useEffect(() => {
-    const viewerConfig = {
-      licenseKey:
-        "AngelBot AI LLP:OEM:AngelBot AI CRM::B+:AMS(20291022):0664A24CE67FB55A8048B253187CE30C600DE2660BDD878643CF028B9622DAB6F5C7",
-      path: "/webviewer/lib",
-      initialDoc: pdfPath,
-    };
+    WebViewer(
+      {
+        licenseKey:
+          "AngelBot AI LLP:OEM:AngelBot AI CRM::B+:AMS(20291022):0664A24CE67FB55A8048B253187CE30C600DE2660BDD878643CF028B9622DAB6F5C7",
+        path: "/webviewer/lib",
+        initialDoc: "",
+        fullAPI: true, // No default document
+      },
+      viewerRef.current
+    ).then((inst) => {
+      setInstance(inst);
+    });
+  }, []);
 
-    WebViewer(viewerConfig, viewerRef.current)
-      .then((instance) => {
-        const { PDFNet, documentViewer } = instance.Core;
+  useEffect(() => {
+    if (instance) {
+      loadPdfFromStorage();
+    }
+  }, [instance, loadPdfFromStorage]);
 
-        instance.UI.enableFeatures([
-          "digitalSignatures",
-          "annotations",
-          "forms",
-        ]);
-
-        documentViewer.addEventListener("documentLoaded", async () => {
-          await PDFNet.initialize();
-
-          const doc = await documentViewer.getDocument().getPDFDoc();
-          await PDFNet.runWithCleanup(async () => {
-            doc.lock();
-
-            const sigHandlerId = await doc.addStdSignatureHandlerFromURL(
-              certFilePath,
-              certPassword
-            );
-            const approvalFieldName = "ApprovalField";
-            const foundApprovalField = await doc.getField(approvalFieldName);
-
-            const approvalSigField =
-              await PDFNet.DigitalSignatureField.createFromField(
-                foundApprovalField
-              );
-
-            await approvalSigField.setLocation(signatureInfo.location);
-            await approvalSigField.setReason(signatureInfo.reason);
-            await approvalSigField.setContactInfo(signatureInfo.contact);
-
-            const img = await PDFNet.Image.createFromURL(
-              doc,
-              appearanceImgPath
-            );
-            const approvalSignatureWidget =
-              await PDFNet.SignatureWidget.createWithDigitalSignatureField(
-                doc,
-                await PDFNet.Rect.init(50, 550, 250, 650),
-                approvalSigField
-              );
-            await approvalSignatureWidget.createSignatureAppearance(img);
-            const page1 = await doc.getPage(1);
-            page1.annotPushBack(approvalSignatureWidget);
-
-            await approvalSigField.signOnNextSaveWithCustomHandler(
-              sigHandlerId
-            );
-
-            const buf = await doc.saveMemoryBuffer(
-              PDFNet.SDFDoc.SaveOptions.e_linearized
-            );
-            const blob = new Blob([buf], { type: "application/pdf" });
-            const link = document.createElement("a");
-            link.href = URL.createObjectURL(blob);
-            link.download = "SignedDocument.pdf";
-            link.click();
-          });
-        });
-      })
-      .catch((error) => {
-        console.error("Error initializing WebViewer:", error);
-      });
-  }, [pdfPath, signatureInfo]);
-
+  // Function to handle file upload
   const handleFileUpload = (event) => {
     const file = event.target.files[0];
-    setDigitalIDFile(file);
+    if (file && instance) {
+      const reader = new FileReader();
+      reader.onload = function (e) {
+        const pdfData = arrayBufferToBase64(e.target.result);
+        localStorage.setItem("uploadedPDF", pdfData); // Save as Base64
+        const pdfBlob = base64ToBlob(pdfData, "application/pdf");
+        const fileUrl = URL.createObjectURL(pdfBlob);
+        instance.UI.loadDocument(fileUrl, { filename: file.name });
+      };
+      reader.readAsArrayBuffer(file);
+    }
+  };
+
+  const fileInputRef = useRef(null);
+
+  const handleDigitalIdUpload = (event) => {
+    const file = event.target.files[0];
+    if (file) {
+      console.log("File Details:", {
+        name: file.name,
+        size: file.size,
+        type: file.type,
+        lastModified: new Date(file.lastModified).toLocaleString(),
+      });
+    }
+  };
+  const handleButtonClick = () => {
+    fileInputRef.current.click();
+  };
+
+  // Function to convert ArrayBuffer to Base64
+  const arrayBufferToBase64 = (buffer) => {
+    let binary = "";
+    const bytes = new Uint8Array(buffer);
+    bytes.forEach((b) => (binary += String.fromCharCode(b)));
+    return btoa(binary);
+  };
+
+  // Function to convert Base64 to Blob
+  const base64ToBlob = (base64, mimeType) => {
+    const byteCharacters = atob(base64);
+    const byteNumbers = new Array(byteCharacters.length);
+    for (let i = 0; i < byteCharacters.length; i++) {
+      byteNumbers[i] = byteCharacters.charCodeAt(i);
+    }
+    const byteArray = new Uint8Array(byteNumbers);
+    return new Blob([byteArray], { type: mimeType });
   };
 
   const handleInputChange = (event) => {
@@ -113,11 +112,10 @@ const App = () => {
   };
 
   const handleApplySignature = () => {
-    console.log("Digital ID File:", digitalIDFile);
+    // console.log("Digital ID File:", digitalIDFile);
     console.log("Password:", digitalIDPassword);
     console.log("Signature Info:", signatureInfo);
   };
-
   return (
     <Box sx={{ display: "flex", height: "100vh", overflow: "hidden" }}>
       {/* WebViewer on the left */}
@@ -125,7 +123,6 @@ const App = () => {
         ref={viewerRef}
         sx={{ flex: 3, border: "1px solid #000", height: "100%" }}
       ></Box>
-
       {/* Digital Signature UI on the right */}
       <Box
         sx={{
@@ -142,6 +139,8 @@ const App = () => {
         <Typography variant="body2" textAlign="center" gutterBottom>
           Costa Cloud Digital Signature
         </Typography>
+
+        {/* Upload PDF Button */}
         <Button
           variant="contained"
           component="label"
@@ -149,14 +148,15 @@ const App = () => {
           fullWidth
           sx={{ mb: 2 }}
         >
-          Choose File
-          <input type="file" hidden onChange={handleFileUpload} />
+          Upload PDF
+          <input
+            type="file"
+            accept="application/pdf"
+            hidden
+            onChange={handleFileUpload}
+          />
         </Button>
-        {digitalIDFile && (
-          <Typography variant="body2" gutterBottom>
-            Selected File: {digitalIDFile.name}
-          </Typography>
-        )}
+
         <Accordion>
           <AccordionSummary expandIcon={<ExpandMoreIcon />}>
             <Typography>Digital ID (optional)</Typography>
@@ -169,13 +169,15 @@ const App = () => {
               sx={{ mb: 2 }}
             >
               Select Digital ID File
-              <input type="file" hidden onChange={handleFileUpload} />
+              <input
+                type="file"
+                accept=".pfx"
+                onChange={(e) => handleDigitalIdUpload(e)}
+                onClick={handleButtonClick}
+                style={{ display: "none" }}
+                ref={fileInputRef}
+              />
             </Button>
-            {digitalIDFile && (
-              <Typography variant="body2" gutterBottom>
-                Selected Digital ID: {digitalIDFile.name}
-              </Typography>
-            )}
             <TextField
               label="Digital ID Password"
               type="password"
@@ -186,6 +188,7 @@ const App = () => {
             />
           </AccordionDetails>
         </Accordion>
+
         <Accordion sx={{ mt: 2 }}>
           <AccordionSummary expandIcon={<ExpandMoreIcon />}>
             <Typography>Set Signature Information (optional)</Typography>
@@ -217,6 +220,7 @@ const App = () => {
             />
           </AccordionDetails>
         </Accordion>
+
         <Button
           variant="contained"
           fullWidth
@@ -231,3 +235,5 @@ const App = () => {
 };
 
 export default App;
+
+
